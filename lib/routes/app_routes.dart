@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:notes_app/screen/home.dart';
 import '../screen/onboarding_screen.dart';
 import '../screen/otp_input_screen.dart';
 import '../screen/otp_verifying_screen.dart';
@@ -11,6 +12,7 @@ class AppRoutes {
   static const otpInput = '/otp-input';
   static const otpVerifying = '/otp-verifying';
   static const forgotPassword = '/forgot-password';
+  static const Home = '/HomeScreen';
 
   static Map<String, WidgetBuilder> routes = {
     splash: (_) => const SplashScreen(),
@@ -18,5 +20,7 @@ class AppRoutes {
     otpInput: (_) => const OtpInputScreen(),
     otpVerifying: (_) => const OtpVerifyingScreen(),
     forgotPassword: (_) => const ForgotPasswordScreen(),
+    Home: (_) => const HomeScreen(),
+
   };
 }
