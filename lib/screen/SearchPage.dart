@@ -112,7 +112,7 @@ class _SearchPageState extends State<SearchPage> {
 
   Widget _buildListView() {
     return ListView.builder(
-      padding: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.only(bottom: 100),
       itemCount: _filteredResults.length,
       itemBuilder: (context, index) {
         return NoteCard(note: _filteredResults[index]);

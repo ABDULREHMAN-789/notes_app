@@ -1,61 +1,111 @@
-
 import 'package:flutter/material.dart';
+import 'package:hive/hive.dart';
+import '../model/note_model.dart';
 
 class SubNotesScreen extends StatefulWidget {
+  final NoteModel? note;
+  const SubNotesScreen({super.key, this.note});
+
   @override
   _SubNotesScreenState createState() => _SubNotesScreenState();
 }
 
 class _SubNotesScreenState extends State<SubNotesScreen> {
-  // List of active and completed sub-notes
-  List<Map<String, dynamic>> activeSubNotes = [
-    {'title': 'Title Here', 'description': 'Create a mobile app UI Kit that provide a basic notes functionality but with some improvement...', 'isCompleted': false},
-    {'title': 'Title Here', 'description': 'Create a mobile app UI Kit that provide a basic notes functionality but with some improvement...', 'isCompleted': false},
-  ];
+  List<Map<String, dynamic>> activeSubNotes = [];
+  List<Map<String, dynamic>> completedSubNotes = [];
 
-  List<Map<String, dynamic>> completedSubNotes = [
-    {'title': 'Title Here', 'description': 'Create a mobile app UI Kit that provide a basic notes functionality but with some improvement...', 'isCompleted': true},
-    {'title': 'Title Here', 'description': 'Create a mobile app UI Kit that provide a basic notes functionality but with some improvement...', 'isCompleted': true},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    if (widget.note != null) {
+      _parseDescription(widget.note!.description);
+    } else {
+      activeSubNotes = [
+        {'title': 'Morning Exercise', 'description': '30 mins workout', 'isCompleted': false},
+        {'title': 'Read a Book', 'description': 'Read at least 10 pages', 'isCompleted': false},
+      ];
+    }
+  }
 
-  // Function to add new sub-note (for demonstration)
+  void _parseDescription(String desc) {
+    try {
+      List<String> parts = desc.split(" | Done: ");
+      String activePart = parts.isNotEmpty ? parts[0] : "";
+      String completedPart = parts.length > 1 ? parts[1] : "";
+
+      if (activePart.isNotEmpty) {
+        activeSubNotes = activePart.split(", ").where((t) => t.trim().isNotEmpty).map((t) {
+          String title = t.replaceAll("[ ] ", "").trim();
+          return {'title': title, 'description': '', 'isCompleted': false};
+        }).toList();
+      }
+
+      if (completedPart.isNotEmpty) {
+        completedSubNotes = completedPart.split(", ").where((t) => t.trim().isNotEmpty).map((t) {
+          String title = t.replaceAll("[x] ", "").trim();
+          return {'title': title, 'description': '', 'isCompleted': true};
+        }).toList();
+      }
+    } catch (e) {
+      // Fallback if parsing fails
+      activeSubNotes = [{'title': 'Error parsing tasks', 'description': desc, 'isCompleted': false}];
+    }
+  }
+
   void _addSubNote() {
     setState(() {
       activeSubNotes.add({
-        'title': 'Title Here',
-        'description': 'Create a mobile app UI Kit that provide a basic notes functionality but with some improvement...',
+        'title': 'New Task',
+        'description': 'Description here...',
         'isCompleted': false,
       });
     });
   }
 
-  // Function to toggle the completion status of a sub-note
-  void _toggleCompletion(int index, bool isCompleted) {
+  void _toggleCompletion(int index, bool currentlyCompleted) {
     setState(() {
-      if (isCompleted) {
-        completedSubNotes[index]['isCompleted'] = !isCompleted;
-        activeSubNotes.add(completedSubNotes[index]);
-        completedSubNotes.removeAt(index);
+      if (currentlyCompleted) {
+        var note = completedSubNotes.removeAt(index);
+        note['isCompleted'] = false;
+        activeSubNotes.add(note);
       } else {
-        activeSubNotes[index]['isCompleted'] = !isCompleted;
-        completedSubNotes.add(activeSubNotes[index]);
-        activeSubNotes.removeAt(index);
+        var note = activeSubNotes.removeAt(index);
+        note['isCompleted'] = true;
+        completedSubNotes.add(note);
       }
     });
+  }
+
+  void _saveToHive() async {
+    String allTasks = activeSubNotes.map((s) => "[ ] ${s['title']}").join(", ") +
+        (completedSubNotes.isNotEmpty ? " | Done: " + completedSubNotes.map((s) => "[x] ${s['title']}").join(", ") : "");
+
+    final newNote = NoteModel(
+      title: "Routine Tasks",
+      description: allTasks,
+      category: 'Routine',
+      checklist: {},
+      imageUrl: widget.note?.imageUrl,
+    );
+
+    var box = Hive.box<NoteModel>('notes_box');
+    
+    if (widget.note != null) {
+      await box.put(widget.note!.key, newNote);
+    } else {
+      await box.add(newNote);
+    }
+    
+    Navigator.pop(context);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Sub Notes'),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
+        title: const Text('Routine Tasks'),
         backgroundColor: Colors.purple,
+        actions: [IconButton(icon: const Icon(Icons.check), onPressed: _saveToHive)],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -66,131 +116,67 @@ class _SubNotesScreenState extends State<SubNotesScreen> {
               alignment: Alignment.centerRight,
               child: ElevatedButton(
                 onPressed: _addSubNote,
-                child: Text('+    Add Sub Notes',style: TextStyle(
-                  color: Colors.white
-                ),),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.purple,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
+                child: const Text('+  Add Sub Notes', style: TextStyle(color: Colors.white)),
               ),
             ),
-            SizedBox(height: 20),
-            Text(
+            const SizedBox(height: 20),
+            const Text(
               'Active Sub Notes',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.purple),
             ),
-            SizedBox(height: 10),
-
-            // Display active sub-notes
+            const SizedBox(height: 10),
             Expanded(
               child: ListView.builder(
                 itemCount: activeSubNotes.length,
                 itemBuilder: (context, index) {
-                  return Container(
-                    margin: EdgeInsets.only(bottom: 16),
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.yellow.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      contentPadding: EdgeInsets.all(0),
-                      leading: Checkbox(
-                        value: activeSubNotes[index]['isCompleted'],
-                        onChanged: (value) {
-                          _toggleCompletion(index, activeSubNotes[index]['isCompleted']);
-                        },
-                      ),
-                      title: Text(activeSubNotes[index]['title']),
-                      subtitle: Text(activeSubNotes[index]['description']),
-                      trailing: IconButton(
-                        icon: Icon(Icons.close),
-                        onPressed: () {
-                          setState(() {
-                            activeSubNotes.removeAt(index);
-                          });
-                        },
-                      ),
-                    ),
-                  );
+                  return _buildNoteItem(index, activeSubNotes, false);
                 },
               ),
             ),
-            // Completed Sub Notes Section
-            SizedBox(height: 20),
-            Text(
+            const SizedBox(height: 20),
+            const Text(
               'Completed Sub Notes',
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green),
             ),
-            SizedBox(height: 10),
-
-            // Display completed sub-notes
+            const SizedBox(height: 10),
             Expanded(
               child: ListView.builder(
                 itemCount: completedSubNotes.length,
                 itemBuilder: (context, index) {
-                  return Container(
-                    margin: EdgeInsets.only(bottom: 16),
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.green.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: ListTile(
-                      contentPadding: EdgeInsets.all(0),
-                      leading: Checkbox(
-                        value: completedSubNotes[index]['isCompleted'],
-                        onChanged: (value) {
-                          _toggleCompletion(index, completedSubNotes[index]['isCompleted']);
-                        },
-                      ),
-                      title: Text(completedSubNotes[index]['title']),
-                      subtitle: Text(completedSubNotes[index]['description']),
-                      trailing: IconButton(
-                        icon: Icon(Icons.close),
-                        onPressed: () {
-                          setState(() {
-                            completedSubNotes.removeAt(index);
-                          });
-                        },
-                      ),
-                    ),
-                  );
+                  return _buildNoteItem(index, completedSubNotes, true);
                 },
               ),
             ),
-            SizedBox(height: 20),
-
-            // Footer with last edit and search
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Last edited on 19:30',
-                  style: TextStyle(color: Colors.grey, fontSize: 14),
-                ),
-                Row(
-                  children: [
-                    IconButton(
-                      icon: Icon(Icons.search),
-                      onPressed: () {
-                        // Search functionality can be added
-                      },
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.more_horiz),
-                      onPressed: () {
-                        // Handle more options
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoteItem(int index, List<Map<String, dynamic>> list, bool isDone) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        color: isDone ? Colors.green.shade50 : Colors.yellow.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDone ? Colors.green.shade200 : Colors.yellow.shade200),
+      ),
+      child: ListTile(
+        leading: Checkbox(
+          value: list[index]['isCompleted'],
+          activeColor: Colors.green,
+          onChanged: (value) => _toggleCompletion(index, isDone),
+        ),
+        title: Text(list[index]['title'], style: TextStyle(fontWeight: FontWeight.bold, decoration: isDone ? TextDecoration.lineThrough : null)),
+        subtitle: Text(list[index]['description']),
+        trailing: IconButton(
+          icon: const Icon(Icons.close, color: Colors.redAccent),
+          onPressed: () => setState(() => list.removeAt(index)),
         ),
       ),
     );

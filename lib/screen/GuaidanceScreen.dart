@@ -1,120 +1,179 @@
-
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:hive/hive.dart';
+import 'dart:io';
+import 'package:path_provider/path_provider.dart'; // Permanent save ke liye
+import 'package:path/path.dart' as p; // Path handle karne ke liye
+import '../model/note_model.dart';
 
-class ProductIdeaScreen extends StatelessWidget {
+class ProductIdeaScreen extends StatefulWidget {
+  final NoteModel? note;
+  const ProductIdeaScreen({super.key, this.note});
+
+  @override
+  _ProductIdeaScreenState createState() => _ProductIdeaScreenState();
+}
+
+class _ProductIdeaScreenState extends State<ProductIdeaScreen> {
+  late TextEditingController titleController;
+  late TextEditingController descController;
+
+  String? _mediaPath;
+  final ImagePicker _picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    titleController = TextEditingController(text: widget.note?.title ?? 'New Product Ideas');
+    descController = TextEditingController(text: widget.note?.description ?? '');
+    _mediaPath = widget.note?.imageUrl;
+  }
+
+  // 1. Media pick karne ka function
+  Future<void> _pickMedia() async {
+    final XFile? file = await _picker.pickImage(source: ImageSource.gallery);
+
+    if (file != null) {
+      setState(() {
+        _mediaPath = file.path;
+      });
+    }
+  }
+
+  // 2. Image ko permanent folder mein save karne ka logic
+  Future<String> _saveImagePermanently(String temporaryPath) async {
+    final directory = await getApplicationDocumentsDirectory();
+    final name = p.basename(temporaryPath);
+    final permanentFile = File('${directory.path}/$name');
+
+    // File copy karke naya permanent path return karein
+    try {
+      final savedImage = await File(temporaryPath).copy(permanentFile.path);
+      return savedImage.path;
+    } catch (e) {
+      return temporaryPath; // Fallback if copy fails or file already exists/read-only
+    }
+  }
+
+  // 3. Hive mein data save karne ka function
+  void _saveToHive() async {
+    if (titleController.text.isNotEmpty) {
+      String? finalImagePath = _mediaPath;
+
+      // Agar image pick ki hai (aur wo nayi temporary file hai) toh usay pehle permanent save karein
+      // Logic: If _mediaPath is different from original note's path OR original note didn't exist
+      if (_mediaPath != null && (widget.note == null || _mediaPath != widget.note!.imageUrl)) {
+         // Only save permanently if it looks like a temporary path or changed. 
+         // For simplicity, we just try to save it if it's not null.
+         // But if it's already a permanent path from previous save, we might act redundantly but safely.
+         // Actually, typically image picker gives temp path. Saved notes have app doc dir path.
+         if (!_mediaPath!.contains('app_flutter')) { // Rough check if it's not already in app data
+            finalImagePath = await _saveImagePermanently(_mediaPath!);
+         }
+      }
+
+      final newNote = NoteModel(
+        title: titleController.text,
+        description: descController.text,
+        category: 'Guidance',
+        imageUrl: finalImagePath,
+        checklist: widget.note?.checklist,
+        tags: widget.note?.tags,
+      );
+
+      var box = Hive.box<NoteModel>('notes_box');
+      
+      if (widget.note != null) {
+        await box.put(widget.note!.key, newNote);
+      } else {
+        await box.add(newNote);
+      }
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('New Product Ideas'),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
+        title: const Text('New Product Ideas'),
         backgroundColor: Colors.purple,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            onPressed: _saveToHive,
+          )
+        ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title and Icon
             Row(
               children: [
-                Icon(
-                  Icons.lightbulb_outline,
-                  color: Colors.purple,
-                ),
-                SizedBox(width: 8),
-                Text(
-                  'New Product Ideas',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
+                const Icon(Icons.lightbulb_outline, color: Colors.purple),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: titleController,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    decoration: const InputDecoration(border: InputBorder.none),
                   ),
                 ),
-                Spacer(),
-                IconButton(
-                  icon: Icon(Icons.edit),
-                  onPressed: () {
-                    // Handle edit action here
-                  },
-                ),
               ],
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-            // Image of the product idea
-            Container(
-              width: double.infinity,
-              height: 200,
-              decoration: BoxDecoration(
-                image: DecorationImage(
-                  image: AssetImage('assets/laptop_image.jpg'), // Replace with your image path
-                  fit: BoxFit.cover,
+            GestureDetector(
+              onTap: _pickMedia,
+              child: Container(
+                width: double.infinity,
+                height: 200,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(12),
+                  image: _mediaPath != null
+                      ? DecorationImage(
+                      image: FileImage(File(_mediaPath!)),
+                      fit: BoxFit.cover
+                  )
+                      : null,
                 ),
-                borderRadius: BorderRadius.circular(12),
+                child: _mediaPath == null
+                    ? const Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_a_photo, size: 50, color: Colors.purple),
+                    Text("Tap to add Image/Video", style: TextStyle(color: Colors.purple)),
+                  ],
+                )
+                    : null,
               ),
             ),
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-            // Description
-            Text(
-              'Create a mobile app UI Kit that provides a basic notes functionality but with some improvement.',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.black87,
+            TextField(
+              controller: descController,
+              maxLines: null,
+              decoration: const InputDecoration(
+                hintText: 'Enter your guidance description here...',
+                border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: 10),
-            Text(
-              'There will be a choice to select what kind of notes that user needed, so the experience while taking notes can be unique based on the needs.',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.black54,
-              ),
-            ),
-            SizedBox(height: 20),
 
-            // Reminder section
-            Text(
+            const SizedBox(height: 20),
+            const Text(
               'Reminder set on 15/07/2021, 18:30',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
+              style: TextStyle(fontSize: 14, color: Colors.black87),
             ),
-            SizedBox(height: 10),
-
-            // Last edited text
-            Text(
+            const SizedBox(height: 10),
+            const Text(
               'Last edited on 19.30',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-              ),
-            ),
-            SizedBox(height: 20),
-
-            // Footer buttons (Search and Menu)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  icon: Icon(Icons.search),
-                  onPressed: () {
-                    // Handle search action
-                  },
-                ),
-                IconButton(
-                  icon: Icon(Icons.more_horiz),
-                  onPressed: () {
-                    // Handle more options action
-                  },
-                ),
-              ],
+              style: TextStyle(color: Colors.grey, fontSize: 14),
             ),
           ],
         ),

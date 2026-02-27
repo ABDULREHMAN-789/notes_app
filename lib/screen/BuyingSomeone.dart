@@ -1,152 +1,104 @@
-
 import 'package:flutter/material.dart';
-
+import 'package:hive/hive.dart';
+import '../model/note_model.dart';
 
 class BuyingSomethingScreen extends StatefulWidget {
+  final NoteModel? note;
+  const BuyingSomethingScreen({super.key, this.note});
+
   @override
   _BuyingSomethingScreenState createState() => _BuyingSomethingScreenState();
 }
 
 class _BuyingSomethingScreenState extends State<BuyingSomethingScreen> {
-  List<String> items = [
-    'A box of instant noodles',
-    '3 box of coffee',
-  ];
+  late TextEditingController titleController;
+  late Map<String, bool> items;
+
+  @override
+  void initState() {
+    super.initState();
+    titleController = TextEditingController(text: widget.note?.title ?? 'Monthly Needs');
+    if (widget.note?.checklist != null) {
+      items = Map<String, bool>.from(widget.note!.checklist!);
+    } else {
+      items = {
+        'A box of instant noodles': false,
+        '3 box of coffee': false,
+      };
+    }
+  }
 
   void _addItem() {
     setState(() {
-      items.add('New item');
+      items['New item ${items.length + 1}'] = false;
     });
   }
+
+  void _saveToHive() async {
+    if (titleController.text.isNotEmpty) {
+      final newNote = NoteModel(
+        title: titleController.text,
+        description: items.keys.join(", "),
+        category: 'Buying',
+        checklist: items,
+        imageUrl: widget.note?.imageUrl,
+      );
+
+      var box = Hive.box<NoteModel>('notes_box');
+      if (widget.note != null) {
+        await box.put(widget.note!.key, newNote);
+      } else {
+        await box.add(newNote);
+      }
+      Navigator.pop(context);
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Buying Something'),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
+        title: const Text('Buying Something'),
         backgroundColor: Colors.green,
+        actions: [
+          IconButton(icon: const Icon(Icons.check), onPressed: _saveToHive)
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Title and Icon
-            Row(
-              children: [
-                Icon(
-                  Icons.shopping_cart,
-                  color: Colors.green,
-                ),
-                SizedBox(width: 8),
-                Text(
-                  'Monthly Needs',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+            TextField(
+              controller: titleController,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(border: InputBorder.none),
             ),
-            SizedBox(height: 20),
-
-            // Checkboxes
-            ...items.map((item) => CheckboxListTile(
-              value: false,
-              onChanged: (bool? value) {},
-              title: Text(item),
-            )).toList(),
-            SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: _addItem,
-                child: Row(
-                  children: [
-                    Icon(Icons.add, color: Colors.purple),
-                    SizedBox(width: 8),
-                    Text(
-                      'Add checkbox',
-                      style: TextStyle(color: Colors.purple),
-                    ),
-                  ],
-                ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: ListView(
+                children: items.keys.map((String key) {
+                  return CheckboxListTile(
+                    title: Text(key),
+                    value: items[key],
+                    activeColor: Colors.green,
+                    onChanged: (bool? value) {
+                      setState(() {
+                        items[key] = value!;
+                      });
+                    },
+                  );
+                }).toList(),
               ),
             ),
-            SizedBox(height: 20),
-
-            // Reminder section
-            Text(
-              'Reminder set on 15/07/2021, 18:30',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.black87,
-              ),
-            ),
-            SizedBox(height: 10),
-
-            // Tags section
-            Wrap(
-              spacing: 8.0, // gap between tags
-              runSpacing: 4.0, // gap between rows
-              children: [
-                _TagChip(label: 'Important'),
-                _TagChip(label: 'Top Priority'),
-                _TagChip(label: 'Should be Done This Week'),
-              ],
-            ),
-            SizedBox(height: 20),
-
-            // Last edited text
-            Text(
-              'Last edited on 19.30',
-              style: TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-              ),
-            ),
-            SizedBox(height: 20),
-
-            // Footer buttons (Search and Menu)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  icon: Icon(Icons.search),
-                  onPressed: () {},
-                ),
-                IconButton(
-                  icon: Icon(Icons.more_horiz),
-                  onPressed: () {},
-                ),
-              ],
+            TextButton.icon(
+              onPressed: _addItem,
+              icon: const Icon(Icons.add, color: Colors.green),
+              label: const Text('Add checkbox', style: TextStyle(color: Colors.green)),
             ),
           ],
         ),
       ),
-    );
-  }
-}
-
-class _TagChip extends StatelessWidget {
-  final String label;
-
-  const _TagChip({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Chip(
-      label: Text(
-        label,
-        style: TextStyle(color: Colors.white),
-      ),
-      backgroundColor: Colors.green,
     );
   }
 }

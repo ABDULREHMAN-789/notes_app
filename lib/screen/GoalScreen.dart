@@ -1,191 +1,197 @@
-
 import 'package:flutter/material.dart';
-
+import 'package:hive/hive.dart';
+import '../model/note_model.dart';
 
 class GoalsScreen extends StatefulWidget {
+  final NoteModel? note;
+  const GoalsScreen({super.key, this.note});
+
   @override
   _GoalsScreenState createState() => _GoalsScreenState();
 }
 
 class _GoalsScreenState extends State<GoalsScreen> {
-  // List of main tasks and subtasks
+  late TextEditingController titleController;
+
   List<Map<String, dynamic>> tasks = [
     {
-      'title': 'A box of instant noodles',
-      'subtasks': ['Subtask 1', 'Subtask 2'],
-    },
-    {
-      'title': '3 box of coffee',
-      'subtasks': ['Subtask 1'],
-    },
-    {
-      'title': '3 box of coffee',
-      'subtasks': [],
+      'title': 'Complete Flutter Project',
+      'isSelected': false,
+      'subtasks': [
+        {'name': 'Database Setup', 'isDone': false},
+        {'name': 'UI Design', 'isDone': false},
+      ]
     },
   ];
 
-  // Function to add a subtask to a task
-  void _addSubtask(int taskIndex) {
+  @override
+  void initState() {
+    super.initState();
+    titleController = TextEditingController(text: widget.note?.title ?? 'Monthly Goals');
+    
+    // Note: Parsing complex nested tasks from the string description is difficult 
+    // without a structured JSON format. For now, we start with the default list
+    // or an empty one if we want.
+    if (widget.note != null) {
+      // Potentially we could try to parse widget.note!.description, but for now
+      // we accept that the structure is reset on edit, as per the plan.
+    }
+  }
+
+  void _addSubtask(int index) {
     setState(() {
-      tasks[taskIndex]['subtasks'].add('New Subtask');
+      tasks[index]['subtasks'].add({'name': 'New Subtask', 'isDone': false});
     });
   }
 
-  // Function to add a new main task
   void _addMainTask() {
     setState(() {
       tasks.add({
-        'title': 'New Task',
+        'title': 'New Main Task',
+        'isSelected': false,
         'subtasks': [],
       });
     });
+  }
+
+  // Hive Save logic
+  void _saveToHive() async {
+    if (titleController.text.isNotEmpty) {
+      // Tasks aur Subtasks ko string mein convert karna display ke liye
+      String descriptionText = tasks.map((t) {
+        String subs = (t['subtasks'] as List).map((s) => s['name']).join(", ");
+        return "${t['title']} (${subs})";
+      }).join(" | ");
+
+      final newNote = NoteModel(
+        title: titleController.text,
+        description: descriptionText,
+        category: 'Goal', 
+        checklist: {}, 
+        imageUrl: widget.note?.imageUrl,
+      );
+
+      var box = Hive.box<NoteModel>('notes_box');
+      if (widget.note != null) {
+         await box.put(widget.note!.key, newNote);
+      } else {
+         await box.add(newNote);
+      }
+      Navigator.pop(context);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Goals'),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back),
-          onPressed: () {
-            Navigator.pop(context);
-          },
-        ),
+        title: const Text('Goals'),
         backgroundColor: Colors.purple,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            onPressed: _saveToHive,
+          )
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.vertical,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title and Icon
-              Row(
-                children: [
-                  Icon(
-                    Icons.tablet,
-                    color: Colors.purple,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: titleController,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              decoration: const InputDecoration(border: InputBorder.none),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                const Icon(Icons.tablet, color: Colors.purple),
+                const SizedBox(width: 8),
+                Text(
+                  'Goal Tasks',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.purple[700],
                   ),
-                  SizedBox(width: 8),
-                  Text(
-                    'Monthly Needs',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Task List loop
+            for (int i = 0; i < tasks.length; i++)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  CheckboxListTile(
+                    value: tasks[i]['isSelected'],
+                    onChanged: (bool? value) {
+                      setState(() => tasks[i]['isSelected'] = value);
+                    },
+                    title: Text(
+                      tasks[i]['title'],
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    controlAffinity: ListTileControlAffinity.leading,
+                  ),
+
+                  // Subtasks display
+                  Padding(
+                    padding: const EdgeInsets.only(left: 32.0),
+                    child: Column(
+                      children: [
+                        for (int j = 0; j < tasks[i]['subtasks'].length; j++)
+                          CheckboxListTile(
+                            value: tasks[i]['subtasks'][j]['isDone'],
+                            onChanged: (bool? value) {
+                              setState(() => tasks[i]['subtasks'][j]['isDone'] = value);
+                            },
+                            title: Text(tasks[i]['subtasks'][j]['name']),
+                            // FIX: controlType ki jagah controlAffinity
+                            controlAffinity: ListTileControlAffinity.leading,
+                            dense: true,
+                          ),
+                      ],
                     ),
                   ),
+
+                  // Add Subtask Button
+                  TextButton.icon(
+                    onPressed: () => _addSubtask(i),
+                    icon: const Icon(Icons.add, color: Colors.purple, size: 20),
+                    label: const Text('Add subtask', style: TextStyle(color: Colors.purple)),
+                  ),
+                  const Divider(),
                 ],
               ),
-              SizedBox(height: 20),
 
-              // Task List with subtasks
-              for (int i = 0; i < tasks.length; i++)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Main Task Checkbox
-                    CheckboxListTile(
-                      value: false,
-                      onChanged: (bool? value) {},
-                      title: Text(tasks[i]['title']),
-                    ),
-                    // Subtasks
-                    for (var subtask in tasks[i]['subtasks'])
-                      CheckboxListTile(
-                        value: false,
-                        onChanged: (bool? value) {},
-                        title: Text(subtask),
-                      ),
-                    // Add Subtask Button
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton(
-                        onPressed: () => _addSubtask(i),
-                        child: Row(
-                          children: [
-                            Icon(Icons.add, color: Colors.purple),
-                            SizedBox(width: 8),
-                            Text(
-                              'Add subtask',
-                              style: TextStyle(color: Colors.purple),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                  ],
-                ),
-
-              // Add Main Task Button
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton(
-                  onPressed: _addMainTask,
-                  child: Row(
-                    children: [
-                      Icon(Icons.add, color: Colors.purple),
-                      SizedBox(width: 8),
-                      Text(
-                        'Add main task',
-                        style: TextStyle(color: Colors.purple),
-                      ),
-                    ],
-                  ),
+            const SizedBox(height: 10),
+            Center(
+              child: ElevatedButton.icon(
+                onPressed: _addMainTask,
+                icon: const Icon(Icons.add),
+                label: const Text('Add main task'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.purple,
+                  foregroundColor: Colors.white,
                 ),
               ),
-              SizedBox(height: 20),
+            ),
 
-              // Reminder section
-              Text(
-                'Reminder set on 15/07/2021, 18:30',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.black87,
-                ),
-              ),
-              SizedBox(height: 10),
-
-              // Tags section
-              Wrap(
-                spacing: 8.0, // gap between tags
-                runSpacing: 4.0, // gap between rows
-                children: [
-                  _TagChip(label: 'Important'),
-                  _TagChip(label: 'Top Priority'),
-                  _TagChip(label: 'Should be Done This Week'),
-                ],
-              ),
-              SizedBox(height: 20),
-
-              // Last edited text
-              Text(
-                'Last edited on 19.30',
-                style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
-                ),
-              ),
-              SizedBox(height: 20),
-
-              // Footer buttons (Search and Menu)
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: Icon(Icons.search),
-                    onPressed: () {},
-                  ),
-                  IconButton(
-                    icon: Icon(Icons.more_horiz),
-                    onPressed: () {},
-                  ),
-                ],
-              ),
-            ],
-          ),
+            const SizedBox(height: 30),
+            const Text('Tags:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            const Wrap(
+              spacing: 8.0,
+              children: [
+                _TagChip(label: 'Important'),
+                _TagChip(label: 'Top Priority'),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -194,17 +200,14 @@ class _GoalsScreenState extends State<GoalsScreen> {
 
 class _TagChip extends StatelessWidget {
   final String label;
-
   const _TagChip({required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Chip(
-      label: Text(
-        label,
-        style: TextStyle(color: Colors.white),
-      ),
+      label: Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
       backgroundColor: Colors.purple,
     );
   }
 }
+
